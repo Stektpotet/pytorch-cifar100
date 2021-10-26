@@ -18,13 +18,71 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
+from qmargin_sampling import qmargin_accumulate, augment_batch
 
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from conf import settings, Settings
+from conf import settings
 from utils import get_network, get_training_dataloader, get_test_dataloader, WarmUpLR, \
     most_recent_folder, most_recent_weights, last_epoch, best_acc_weights
+
+def train_qmargin(epoch):
+
+    start = time.time()
+    net.train()
+    batch_index = 0
+    for batch_index, (images, labels) in enumerate(qmargin_accumulate(cifar100_training_loader, net, args.b, args.gpu)):
+        if args.gpu:
+            labels = labels.cuda()
+            images = images.cuda()
+
+        optimizer.zero_grad()
+        outputs = net(images)
+        loss = loss_function(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        n_iter = (epoch - 1) * len(cifar100_training_loader) + batch_index + 1
+
+        last_layer = list(net.children())[-1]
+        for name, para in last_layer.named_parameters():
+            if 'weight' in name:
+                writer.add_scalar('LastLayerGradients/grad_norm2_weights', para.grad.norm(), n_iter)
+            if 'bias' in name:
+                writer.add_scalar('LastLayerGradients/grad_norm2_bias', para.grad.norm(), n_iter)
+
+        print('QMargin Training Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
+            loss.item(),
+            optimizer.param_groups[0]['lr'],
+            epoch=epoch,
+            trained_samples=(batch_index + 1) * args.b,
+            total_samples=len(cifar100_training_loader.dataset)
+        ))
+
+        #update training loss for each iteration
+        writer.add_scalar('Train/loss', loss.item(), n_iter)
+
+        if epoch <= args.warm:
+            warmup_scheduler.step()
+
+    print('QMargin Training Epoch: {epoch}\t{percentage:.2f}% of samples used...'.format(
+            epoch=epoch,
+            percentage=((batch_index+1) * args.b)*100/len(cifar100_training_loader.dataset)) +
+          '\nDropped {dropped_samples} out of {total_samples} samples.'.format(
+            dropped_samples=len(cifar100_training_loader.dataset) - ((batch_index+1) * args.b),
+            total_samples=len(cifar100_training_loader.dataset)
+    ))
+
+    for name, param in net.named_parameters():
+        layer, attr = os.path.splitext(name)
+        attr = attr[1:]
+        writer.add_histogram("{}/{}".format(layer, attr), param, epoch)
+
+    finish = time.time()
+
+    print('epoch {} training time consumed: {:.2f}s'.format(epoch, finish - start))
+
 
 def train(epoch):
 
@@ -117,7 +175,10 @@ def eval_training(loader, epoch=0, tb=True, tag='Test'):
 
     return correct.float() / len(loader.dataset)
 
+
 if __name__ == '__main__':
+
+    bootstrap_steps = 5
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-net', type=str, required=True, help='net type')
@@ -179,7 +240,7 @@ if __name__ == '__main__':
     #since tensorboard can't overwrite old values
     #so the only way is to create a new tensorboard log
     writer = SummaryWriter(log_dir=os.path.join(
-            settings.LOG_DIR, args.net, settings.TIME_NOW))
+            settings.LOG_DIR, args.net, 'qmargin', settings.TIME_NOW))
     input_tensor = torch.Tensor(1, 3, 32, 32)
     if args.gpu:
         input_tensor = input_tensor.cuda()
@@ -209,17 +270,38 @@ if __name__ == '__main__':
         net.load_state_dict(torch.load(weights_path))
 
         resume_epoch = last_epoch(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
+    else:
+        for epoch in range(1, min(settings.EPOCH + 1, bootstrap_steps)):
+            if epoch > args.warm:
+                train_scheduler.step()
 
+            train(epoch)
+            acc = eval_training(cifar100_test_loader, epoch)
+            if epoch % 5 == 0:
+                eval_training(cifar100_training_unaugmented_loader, epoch, tag='Train')
 
-    for epoch in range(1, settings.EPOCH + 1):
+            # start to save best performance model after learning rate decay to 0.01
+            if epoch > settings.MILESTONES[1] and best_acc < acc:
+                weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='best')
+                print('saving weights file to {}'.format(weights_path))
+                torch.save(net.state_dict(), weights_path)
+                best_acc = acc
+                continue
+
+            if not epoch % settings.SAVE_EPOCH:
+                weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='regular')
+                print('saving weights file to {}'.format(weights_path))
+                torch.save(net.state_dict(), weights_path)
+
+    for epoch in range(1+bootstrap_steps, settings.EPOCH + 1):
         if epoch > args.warm:
-            train_scheduler.step(epoch)
+            train_scheduler.step()
 
         if args.resume:
             if epoch <= resume_epoch:
                 continue
 
-        train(epoch)
+        train_qmargin(epoch)
         acc = eval_training(cifar100_test_loader, epoch)
         if epoch % 5 == 0:
             eval_training(cifar100_training_unaugmented_loader, epoch, tag='Train')

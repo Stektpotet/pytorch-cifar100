@@ -163,7 +163,7 @@ def get_network(args):
     return net
 
 
-def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
+def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True, augment=True):
     """ return training dataloader
     Args:
         mean: mean of cifar100 training dataset
@@ -172,19 +172,29 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
         batch_size: dataloader batchsize
         num_workers: dataloader num_works
         shuffle: whether to shuffle
+        augment: should the data be augmented?
     Returns: train_data_loader:torch dataloader object
     """
 
     transform_train = transforms.Compose([
         #transforms.ToPILImage(),
-        transforms.RandomCrop(32, padding=4),
+        transforms.RandomCrop(32, padding=4, pad_if_needed=True),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(15),
+        transforms.RandomAffine(
+            degrees=20,
+            translate=(0.1, 0.1), scale=(0.9, 1.1),
+        ),
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std),
+        transforms.ColorJitter(0.5, 0.5, 0.5, 0.05)
+    ])
+    transforms_test = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
     #cifar100_training = CIFAR100Train(path, transform=transform_train)
-    cifar100_training = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
+    cifar100_training = torchvision.datasets.CIFAR100(root='./data', train=True, download=True,
+                                                      transform=transform_train if augment else transforms_test)
     cifar100_training_loader = DataLoader(
         cifar100_training, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
 
