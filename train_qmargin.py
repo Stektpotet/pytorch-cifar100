@@ -1,31 +1,18 @@
-# train.py
-#!/usr/bin/env	python3
 
-""" train network using pytorch
-
-author baiyu
-"""
-
-import os
-import sys
 import argparse
+import os
 import time
-from datetime import datetime
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
-import torchvision.transforms as transforms
-from qmargin_sampling import qmargin_accumulate, augment_batch
-
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from conf import settings
+from qmargin_sampling import qmargin_accumulate
 from utils import get_network, get_training_dataloader, get_test_dataloader, WarmUpLR, \
     most_recent_folder, most_recent_weights, last_epoch, best_acc_weights
+
 
 def train_qmargin(epoch):
 
@@ -178,14 +165,12 @@ def eval_training(loader, epoch=0, tb=True, tag='Test'):
 
 if __name__ == '__main__':
 
-    bootstrap_steps = 5
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-net', type=str, required=True, help='net type')
     parser.add_argument('-gpu', action='store_true', default=False, help='use gpu or not')
     parser.add_argument('-b', type=int, default=128, help='batch size for dataloader')
-    parser.add_argument('-warm', type=int, default=1, help='warm up training phase')
-    parser.add_argument('-lr', type=float, default=0.1, help='initial learning rate')
+    parser.add_argument('-warm', type=int, default=0, help='warm up training phase')
+    parser.add_argument('-lr', type=float, default=0.05, help='initial learning rate')
     parser.add_argument('-resume', action='store_true', default=False, help='resume training')
     args = parser.parse_args()
 
@@ -218,8 +203,8 @@ if __name__ == '__main__':
     )
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-    train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.2) #learning rate decay
+    optimizer = optim.SGD(net.parameters(), lr=args.lr)
+    # train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.2) #learning rate decay
     iter_per_epoch = len(cifar100_training_loader)
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
 
@@ -270,32 +255,11 @@ if __name__ == '__main__':
         net.load_state_dict(torch.load(weights_path))
 
         resume_epoch = last_epoch(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
-    else:
-        for epoch in range(1, min(settings.EPOCH + 1, bootstrap_steps)):
-            if epoch > args.warm:
-                train_scheduler.step()
 
-            train(epoch)
-            acc = eval_training(cifar100_test_loader, epoch)
-            if epoch % 5 == 0:
-                eval_training(cifar100_training_unaugmented_loader, epoch, tag='Train')
-
-            # start to save best performance model after learning rate decay to 0.01
-            if epoch > settings.MILESTONES[1] and best_acc < acc:
-                weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='best')
-                print('saving weights file to {}'.format(weights_path))
-                torch.save(net.state_dict(), weights_path)
-                best_acc = acc
-                continue
-
-            if not epoch % settings.SAVE_EPOCH:
-                weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='regular')
-                print('saving weights file to {}'.format(weights_path))
-                torch.save(net.state_dict(), weights_path)
-
-    for epoch in range(1+bootstrap_steps, settings.EPOCH + 1):
+    for epoch in range(1, settings.EPOCH + 1):
         if epoch > args.warm:
-            train_scheduler.step()
+            # train_scheduler.step()
+            pass
 
         if args.resume:
             if epoch <= resume_epoch:
