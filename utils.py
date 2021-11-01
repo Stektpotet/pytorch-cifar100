@@ -198,6 +198,7 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
 
     return cifar100_training_loader
 
+
 def get_test_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
     """ return training dataloader
     Args:
@@ -221,6 +222,7 @@ def get_test_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
 
     return cifar100_test_loader
 
+
 def compute_mean_std(cifar100_dataset):
     """compute the mean and std of cifar100 dataset
     Args:
@@ -231,13 +233,14 @@ def compute_mean_std(cifar100_dataset):
         a tuple contains mean, std value of entire dataset
     """
 
-    data_r = numpy.dstack([cifar100_dataset[i][1][:, :, 0] for i in range(len(cifar100_dataset))])
-    data_g = numpy.dstack([cifar100_dataset[i][1][:, :, 1] for i in range(len(cifar100_dataset))])
-    data_b = numpy.dstack([cifar100_dataset[i][1][:, :, 2] for i in range(len(cifar100_dataset))])
+    data_r = numpy.dstack([cifar100_dataset[i][0][:, :, 0] for i in range(len(cifar100_dataset))])
+    data_g = numpy.dstack([cifar100_dataset[i][0][:, :, 1] for i in range(len(cifar100_dataset))])
+    data_b = numpy.dstack([cifar100_dataset[i][0][:, :, 2] for i in range(len(cifar100_dataset))])
     mean = numpy.mean(data_r), numpy.mean(data_g), numpy.mean(data_b)
     std = numpy.std(data_r), numpy.std(data_g), numpy.std(data_b)
 
     return mean, std
+
 
 class WarmUpLR(_LRScheduler):
     """warmup_training learning rate scheduler
@@ -274,6 +277,7 @@ def most_recent_folder(net_weights, fmt):
     folders = sorted(folders, key=lambda f: datetime.datetime.strptime(f, fmt))
     return folders[-1]
 
+
 def most_recent_weights(weights_folder):
     """
         return most recent created weights file
@@ -290,6 +294,7 @@ def most_recent_weights(weights_folder):
 
     return weight_files[-1]
 
+
 def last_epoch(weights_folder):
     weight_file = most_recent_weights(weights_folder)
     if not weight_file:
@@ -297,6 +302,7 @@ def last_epoch(weights_folder):
     resume_epoch = int(weight_file.split('-')[1])
 
     return resume_epoch
+
 
 def best_acc_weights(weights_folder):
     """

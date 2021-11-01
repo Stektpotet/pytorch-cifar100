@@ -10,12 +10,13 @@ from torch.distributed import group
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
+from torchvision.datasets import SVHN
 
 from arg_utils import make_interval_parser
 from conf import settings
 from qmargin_sampling import qmargin_accumulate
 from utils import get_network, get_training_dataloader, get_test_dataloader, WarmUpLR, \
-    most_recent_folder, most_recent_weights, last_epoch, best_acc_weights
+    most_recent_folder, most_recent_weights, last_epoch, best_acc_weights, compute_mean_std
 
 
 def train_qmargin(epoch):
@@ -23,7 +24,7 @@ def train_qmargin(epoch):
     start = time.time()
     net.train()
     batch_index = 0
-    for batch_index, (images, labels) in enumerate(qmargin_accumulate(cifar100_training_loader, net, args.b, args.gpu, args.quantile, args.margin)):
+    for batch_index, (images, labels) in enumerate(qmargin_accumulate(train_loader, net, args.b, args.gpu, args.quantile, args.margin)):
         if args.gpu:
             labels = labels.cuda()
             images = images.cuda()
@@ -34,7 +35,7 @@ def train_qmargin(epoch):
         loss.backward()
         optimizer.step()
 
-        n_iter = (epoch - 1) * len(cifar100_training_loader) + batch_index + 1
+        n_iter = (epoch - 1) * len(train_loader) + batch_index + 1
 
         last_layer = list(net.children())[-1]
         for name, para in last_layer.named_parameters():
@@ -48,7 +49,7 @@ def train_qmargin(epoch):
             optimizer.param_groups[0]['lr'],
             epoch=epoch,
             trained_samples=(batch_index + 1) * args.b,
-            total_samples=len(cifar100_training_loader.dataset)
+            total_samples=len(train_loader.dataset)
         ))
 
         #update training loss for each iteration
@@ -59,10 +60,10 @@ def train_qmargin(epoch):
 
     print('QMargin Training Epoch: {epoch}\t{percentage:.2f}% of samples used...'.format(
             epoch=epoch,
-            percentage=((batch_index+1) * args.b)*100/len(cifar100_training_loader.dataset)) +
+            percentage=((batch_index+1) * args.b)*100/len(train_loader.dataset)) +
           '\nDropped {dropped_samples} out of {total_samples} samples.'.format(
-            dropped_samples=len(cifar100_training_loader.dataset) - ((batch_index+1) * args.b),
-            total_samples=len(cifar100_training_loader.dataset)
+            dropped_samples=len(train_loader.dataset) - ((batch_index+1) * args.b),
+            total_samples=len(train_loader.dataset)
     ))
 
     for name, param in net.named_parameters():
@@ -78,7 +79,7 @@ def train(epoch):
 
     start = time.time()
     net.train()
-    for batch_index, (images, labels) in enumerate(cifar100_training_loader):
+    for batch_index, (images, labels) in enumerate(train_loader):
 
         if args.gpu:
             labels = labels.cuda()
@@ -90,7 +91,7 @@ def train(epoch):
         loss.backward()
         optimizer.step()
 
-        n_iter = (epoch - 1) * len(cifar100_training_loader) + batch_index + 1
+        n_iter = (epoch - 1) * len(train_loader) + batch_index + 1
 
         last_layer = list(net.children())[-1]
         for name, para in last_layer.named_parameters():
@@ -104,7 +105,7 @@ def train(epoch):
             optimizer.param_groups[0]['lr'],
             epoch=epoch,
             trained_samples=batch_index * args.b + len(images),
-            total_samples=len(cifar100_training_loader.dataset)
+            total_samples=len(train_loader.dataset)
         ))
 
         #update training loss for each iteration
@@ -128,7 +129,7 @@ def eval_training(loader, epoch=0, tb=True, tag='Test'):
     start = time.time()
     net.eval()
 
-    test_loss = 0.0 # cost function error
+    test_loss = 0.0  # cost function error
     correct = 0.0
 
     for (images, labels) in loader:
@@ -192,38 +193,35 @@ if __name__ == '__main__':
 
     net = get_network(args)
 
+
     #data preprocessing:
-    cifar100_training_loader = get_training_dataloader(
-        settings.CIFAR100_TRAIN_MEAN,
-        settings.CIFAR100_TRAIN_STD,
-        num_workers=4,
-        batch_size=args.b,
-        shuffle=True
-    )
 
-    cifar100_training_unaugmented_loader = get_training_dataloader(
-        settings.CIFAR100_TRAIN_MEAN,
-        settings.CIFAR100_TRAIN_STD,
-        num_workers=4,
-        batch_size=args.b,
-        shuffle=True,
-        augment=False
-    )
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(settings.SVHN_TRAIN_MEAN, settings.SVHN_TRAIN_STD)
+    ])
 
-    cifar100_test_loader = get_test_dataloader(
-        settings.CIFAR100_TRAIN_MEAN,
-        settings.CIFAR100_TRAIN_STD,
-        num_workers=4,
-        batch_size=args.b,
-        shuffle=True
-    )
+    transform_train = transforms.Compose([
+        transforms.RandomRotation(10),
+        transform_test
+    ])
+
+    train_loader = DataLoader(SVHN('./data', "train", transform_train, download=True),
+                              batch_size=args.b, shuffle=True, num_workers=4)
+
+    train_unaugmented_loader = DataLoader(SVHN('./data', "train", transform_test, download=True),
+                              batch_size=args.b, shuffle=True, num_workers=4)
+
+    test_loader = DataLoader(SVHN('./data', "test", transform_test, download=True),
+                              batch_size=args.b, shuffle=True, num_workers=4)
+
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=args.lr)
     # print(optimizer.param_groups)
     # exit()
     # train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.2) #learning rate decay
-    iter_per_epoch = len(cifar100_training_loader)
+    iter_per_epoch = len(train_loader)
     # warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
 
     if args.resume:
@@ -243,7 +241,7 @@ if __name__ == '__main__':
     #since tensorboard can't overwrite old values
     #so the only way is to create a new tensorboard log
     writer = SummaryWriter(log_dir=os.path.join(
-            settings.LOG_DIR, 'CIFAR100', args.net, 'qmargin' if args.qmargin else 'standard', settings.TIME_NOW))
+            settings.LOG_DIR, 'SVHN', args.net, 'qmargin' if args.qmargin else 'standard', settings.TIME_NOW))
     input_tensor = torch.Tensor(1, 3, 32, 32)
     if args.gpu:
         input_tensor = input_tensor.cuda()
@@ -262,7 +260,7 @@ if __name__ == '__main__':
             print('found best acc weights file:{}'.format(weights_path))
             print('load best training file to test acc...')
             net.load_state_dict(torch.load(weights_path))
-            best_acc = eval_training(cifar100_test_loader, tb=False)
+            best_acc = eval_training(test_loader, tb=False)
             print('best acc is {:0.2f}'.format(best_acc))
 
         recent_weights_file = most_recent_weights(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
@@ -286,9 +284,9 @@ if __name__ == '__main__':
                 continue
 
         train_func(epoch)
-        acc = eval_training(cifar100_test_loader, epoch)
+        acc = eval_training(test_loader, epoch)
         if epoch % 5 == 0:
-            eval_training(cifar100_training_unaugmented_loader, epoch, tag='Train')
+            eval_training(train_unaugmented_loader, epoch, tag='Train')
 
         #start to save best performance model after learning rate decay to 0.01
         if epoch > settings.MILESTONES[1] and best_acc < acc:
