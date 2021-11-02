@@ -1,6 +1,7 @@
 
 import argparse
 import os
+import random
 import time
 
 import torch
@@ -241,7 +242,8 @@ if __name__ == '__main__':
     #since tensorboard can't overwrite old values
     #so the only way is to create a new tensorboard log
     writer = SummaryWriter(log_dir=os.path.join(
-            settings.LOG_DIR, 'SVHN', args.net, 'qmargin' if args.qmargin else 'standard', settings.TIME_NOW))
+        settings.LOG_DIR, 'SVHN', args.net, 'qmargin' if args.qmargin else 'standard',
+        settings.TIME_NOW + f' {random.randint(0, 1000000)}'))
     input_tensor = torch.Tensor(1, 3, 32, 32)
     if args.gpu:
         input_tensor = input_tensor.cuda()
