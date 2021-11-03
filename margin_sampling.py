@@ -63,7 +63,6 @@ def qmargin_accumulate_batch_augment(loader: DataLoader, model: nn.Module, batch
     model.train()
 
 
-
 def qmargin_accumulate(loader: DataLoader, model: nn.Module, batch_size: int, gpu: bool,
                        q: float = 1.0, margin: float = 0.4) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
     accumulated_data: List[torch.Tensor] = []
@@ -108,6 +107,70 @@ def qmargin_accumulate(loader: DataLoader, model: nn.Module, batch_size: int, gp
             # mask of samples where the decision margin is too narrow
             inside_margin = torch.nonzero(decision_distance < margin).view(-1)
             del beliefs, top, qs, sorted_beliefs, decision_distance
+
+            # Only keep samples where the decision margin is too narrow, other samples are already well separated.
+            accumulated_data.append(x[inside_margin])
+            accumulated_labels.append(y[inside_margin])
+            current_accumulation += len(inside_margin)
+            del inside_margin
+
+        if current_accumulation >= batch_size:
+            model.train()
+            yield torch.cat(accumulated_data)[:batch_size], torch.cat(accumulated_labels)[:batch_size]
+            model.eval()
+            samples_left -= current_accumulation
+
+            current_accumulation = 0
+            accumulated_data.clear()
+            accumulated_labels.clear()
+
+            if samples_left < batch_size:
+                model.train()
+                return
+    model.train()
+
+
+def kmargin_accumulate(loader: DataLoader, model: nn.Module, batch_size: int, gpu: bool,
+                       k: int = 0, margin: float = 0.4) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    accumulated_data: List[torch.Tensor] = []
+    accumulated_labels: List[torch.Tensor] = []
+    current_accumulation = 0
+    samples_left = len(loader.dataset)
+
+    sample = loader.dataset[0][0].unsqueeze(0)
+    if gpu:
+        sample = sample.cuda()
+    num_classes = torch.softmax(model(sample.cuda()), dim=1).shape[-1]
+    del sample
+
+    if k < 0 or k > num_classes - 2:
+        warnings.warn(f"k-Margin accumulation does not permit a q outside of range [0-{num_classes-2}], clamping...")
+        k = min(max(k, 0), num_classes-2)
+    if margin < 0 or margin >= 1:
+        warnings.warn("Q-Margin accumulation does not permit a margin outside of range [0-1), clamping...")
+        margin = min(max(margin, 0), 1 - 1e-10)
+
+    model.eval()
+    for batch in loader:
+        x, y = batch
+        if gpu:
+            x = x.cuda()
+            y = y.cuda()
+
+        with torch.no_grad():
+            model_output = model(x)
+            beliefs = torch.softmax(model_output, dim=1)
+            del model_output
+            sorted_beliefs = torch.sort(beliefs, dim=1, descending=True).values
+
+            # the highest belief per sample -> i.e. which class samples would be classified as
+            top = sorted_beliefs[:, 0]  # top class belief strengths
+
+            k_warm = sorted_beliefs[:, k + 1]  # q class belief strengths
+            decision_distance = top - k_warm  # how far apart the belief strengths are (decision margin/boundary)
+            # mask of samples where the decision margin is too narrow
+            inside_margin = torch.nonzero(decision_distance < margin).view(-1)
+            del beliefs, top, k_warm, sorted_beliefs, decision_distance
 
             # Only keep samples where the decision margin is too narrow, other samples are already well separated.
             accumulated_data.append(x[inside_margin])

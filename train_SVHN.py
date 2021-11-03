@@ -13,19 +13,19 @@ from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
 from torchvision.datasets import SVHN
 
-from arg_utils import make_interval_parser
+from arg_utils import parse_args, make_interval_parser, make_half_interval_parser, parse_cli_args
 from conf import settings
-from qmargin_sampling import qmargin_accumulate
+from margin_sampling import kmargin_accumulate
 from utils import get_network, get_training_dataloader, get_test_dataloader, WarmUpLR, \
     most_recent_folder, most_recent_weights, last_epoch, best_acc_weights, compute_mean_std
 
 
-def train_qmargin(epoch):
+def train_kmargin(epoch):
 
     start = time.time()
     net.train()
     batch_index = 0
-    for batch_index, (images, labels) in enumerate(qmargin_accumulate(train_loader, net, args.b, args.gpu, args.quantile, args.margin)):
+    for batch_index, (images, labels) in enumerate(kmargin_accumulate(train_loader, net, args.b, args.gpu, args.quantile, args.margin)):
         if args.gpu:
             labels = labels.cuda()
             images = images.cuda()
@@ -170,30 +170,15 @@ def eval_training(loader, epoch=0, tb=True, tag='Test'):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers()
-    parser.add_argument('-net', type=str, required=True, help='net type')
-    parser.add_argument('-gpu', action='store_true', default=False, help='use gpu or not')
-    parser.add_argument('-b', type=int, default=128, help='batch size for dataloader')
-    parser.add_argument('-e', '--epochs', type=int, default=200, help='number of epochs to train for')
-    parser.add_argument('-warm', type=int, default=-1, help='warm up training phase')
-    parser.add_argument('-lr', type=float, default=0.05, help='initial learning rate')
-    parser.add_argument('-resume', action='store_true', default=False, help='resume training')
-    parser.add_argument('--qmargin', action='store_true', default=False, help=argparse.SUPPRESS)
-
-
-    # ================================================ QMargin Options ================================================
-    parse_quantile = make_interval_parser(0, 1, lower_closed=True, upper_closed=True)
-    parse_margin = make_interval_parser(0, 1, lower_closed=True, upper_closed=False)
-    qmargin_parser = subparsers.add_parser('qmargin', help='use qmargin selection')
-    qmargin_parser.add_argument('--qmargin', action='store_true', default=True, help=argparse.SUPPRESS)
-    qmargin_parser.add_argument('-q', '--quantile', type=parse_quantile, default=1.0)
-    qmargin_parser.add_argument('-m', '--margin', type=parse_margin, default=0.4)
-
-    args = parser.parse_args()
-
+    args = parse_cli_args()
     net = get_network(args)
-
+    args_suffix = f"_o{args.optimizer}_b{args.batch_size}" + f"_k{args.k_warm}_m{args.margin}" if args.kmargin else ""
+    optim_from_args = {
+        'sgd':  optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, dampening=args.dampening,
+                          weight_decay=args.weight_decay, nesterov=args.nesterov),
+        'adam': optim.Adam(net.parameters(), lr=args.lr, betas=args.betas, eps=args.eps, weight_decay=args.weight_decay,
+                           amsgrad=args.amsgrad)
+    }
 
     #data preprocessing:
 
@@ -203,7 +188,7 @@ if __name__ == '__main__':
     ])
 
     transform_train = transforms.Compose([
-        transforms.RandomRotation(10),
+        transforms.RandomRotation(5),
         transform_test
     ])
 
@@ -218,9 +203,7 @@ if __name__ == '__main__':
 
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=args.lr)
-    # print(optimizer.param_groups)
-    # exit()
+    optimizer = optim_from_args[args.optimizer]
     # train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.2) #learning rate decay
     iter_per_epoch = len(train_loader)
     # warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
@@ -242,8 +225,8 @@ if __name__ == '__main__':
     #since tensorboard can't overwrite old values
     #so the only way is to create a new tensorboard log
     writer = SummaryWriter(log_dir=os.path.join(
-        settings.LOG_DIR, 'SVHN', args.net, 'qmargin' if args.qmargin else 'standard',
-        settings.TIME_NOW + f' {random.randint(0, 1000000)}'))
+        settings.LOG_DIR, 'SVHN', args.net, 'kmargin' if args.kmargin else 'standard',
+        settings.TIME_NOW + args_suffix))
     input_tensor = torch.Tensor(1, 3, 32, 32)
     if args.gpu:
         input_tensor = input_tensor.cuda()
@@ -274,7 +257,7 @@ if __name__ == '__main__':
 
         resume_epoch = last_epoch(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
 
-    train_func = train_qmargin if args.qmargin else train
+    train_func = train_kmargin if args.kmargin else train
 
     for epoch in range(1, args.epochs + 1):
         if epoch > args.warm:
