@@ -175,7 +175,7 @@ if __name__ == '__main__':
     args = parse_cli_args()
     net = get_network(args)
 
-    args_suffix = f"_O{args.optimizer}_B{args.batch_size}" + f"_K{args.k_warm}_M{args.margin}" if args.kmargin else ""
+    args_suffix = f"_O{args.optimizer}_B{args.batch_size}_LR{args.lr}" + f"_K{args.k_warm}_M{args.margin}" if args.kmargin else ""
 
     optim_from_args = {
         'sgd':  optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, dampening=args.dampening,
