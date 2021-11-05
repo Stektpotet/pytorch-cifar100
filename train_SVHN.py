@@ -25,7 +25,7 @@ def train_kmargin(epoch):
     start = time.time()
     net.train()
     batch_index = 0
-    for batch_index, (images, labels) in enumerate(kmargin_accumulate(train_loader, net, args.b, args.gpu, args.quantile, args.margin)):
+    for batch_index, (images, labels) in enumerate(kmargin_accumulate(train_loader, net, args.batch_size, args.gpu, args.k_warm, args.margin)):
         if args.gpu:
             labels = labels.cuda()
             images = images.cuda()
@@ -49,7 +49,7 @@ def train_kmargin(epoch):
             loss.item(),
             optimizer.param_groups[0]['lr'],
             epoch=epoch,
-            trained_samples=(batch_index + 1) * args.b,
+            trained_samples=(batch_index + 1) * args.batch_size,
             total_samples=len(train_loader.dataset)
         ))
 
@@ -61,9 +61,9 @@ def train_kmargin(epoch):
 
     print('QMargin Training Epoch: {epoch}\t{percentage:.2f}% of samples used...'.format(
             epoch=epoch,
-            percentage=((batch_index+1) * args.b)*100/len(train_loader.dataset)) +
+            percentage=((batch_index+1) * args.batch_size)*100/len(train_loader.dataset)) +
           '\nDropped {dropped_samples} out of {total_samples} samples.'.format(
-            dropped_samples=len(train_loader.dataset) - ((batch_index+1) * args.b),
+            dropped_samples=len(train_loader.dataset) - ((batch_index+1) * args.batch_size),
             total_samples=len(train_loader.dataset)
     ))
 
@@ -105,7 +105,7 @@ def train(epoch):
             loss.item(),
             optimizer.param_groups[0]['lr'],
             epoch=epoch,
-            trained_samples=batch_index * args.b + len(images),
+            trained_samples=batch_index * args.batch_size + len(images),
             total_samples=len(train_loader.dataset)
         ))
 
@@ -194,13 +194,13 @@ if __name__ == '__main__':
     ])
 
     train_loader = DataLoader(SVHN('./data', "train", transform_train, download=True),
-                              batch_size=args.b, shuffle=True, num_workers=4)
+                              batch_size=args.batch_size, shuffle=True, num_workers=4)
 
     train_unaugmented_loader = DataLoader(SVHN('./data', "train", transform_test, download=True),
-                              batch_size=args.b, shuffle=True, num_workers=4)
+                              batch_size=args.batch_size, shuffle=True, num_workers=4)
 
     test_loader = DataLoader(SVHN('./data', "test", transform_test, download=True),
-                              batch_size=args.b, shuffle=True, num_workers=4)
+                              batch_size=args.batch_size, shuffle=True, num_workers=4)
 
 
     loss_function = nn.CrossEntropyLoss()
