@@ -271,6 +271,11 @@ if __name__ == '__main__':
     train_func = train_kmargin if args.kmargin else train
 
     print("begin training...")
+
+    acc = eval_training(cifar100_test_loader, 0)
+    acc_train = eval_training(cifar100_training_unaugmented_loader, 0, tag='Train')
+    writer.add_scalar('accuracy_ratio', acc / max(acc_train, 1e-8), 0)
+
     for epoch in range(1, args.epochs + 1):
         if epoch > args.warm:
             # train_scheduler.step()
@@ -283,7 +288,8 @@ if __name__ == '__main__':
         train_func(epoch)
         acc = eval_training(cifar100_test_loader, epoch)
         if epoch % 5 == 0:
-            eval_training(cifar100_training_unaugmented_loader, epoch, tag='Train')
+            acc_train = eval_training(cifar100_training_unaugmented_loader, epoch, tag='Train')
+            writer.add_scalar('accuracy_ratio', acc/max(acc_train, 1e-8), epoch)
 
         #start to save best performance model after learning rate decay to 0.01
         if epoch > settings.MILESTONES[1] and best_acc < acc:
