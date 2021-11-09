@@ -20,6 +20,7 @@ def parse_cli_args():
     kmargin_group = parser.add_argument_group("K-Margin Options")
     kmargin_group.add_argument('-k', '--k_warm', type=_geq_zero_i, default=0)
     kmargin_group.add_argument('-m', '--margin', type=_01_open_ended_interval_f, default=0.4)
+    kmargin_group.add_argument('-mdo', '--margin_decay_order', type=_geq_zero_i, default=0)
     kmargin_action = parser.add_argument('--kmargin', action='store_true', default=False, help='use kmargin sampling')
     show_group_on_action(kmargin_group, kmargin_action)
     # ================================================ Optimizer Options ================================================
