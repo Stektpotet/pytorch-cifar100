@@ -8,10 +8,12 @@ import re
 import sys
 
 import numpy
+import torch
 import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR100
+from tqdm import tqdm
 
 
 def get_network(args):
@@ -223,7 +225,7 @@ def get_test_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
     return cifar100_test_loader
 
 
-def compute_mean_std(cifar100_dataset):
+def compute_mean_std(dataset):
     """compute the mean and std of cifar100 dataset
     Args:
         cifar100_training_dataset or cifar100_test_dataset
@@ -233,11 +235,22 @@ def compute_mean_std(cifar100_dataset):
         a tuple contains mean, std value of entire dataset
     """
 
-    data_r = numpy.dstack([cifar100_dataset[i][0][:, :, 0] for i in range(len(cifar100_dataset))])
-    data_g = numpy.dstack([cifar100_dataset[i][0][:, :, 1] for i in range(len(cifar100_dataset))])
-    data_b = numpy.dstack([cifar100_dataset[i][0][:, :, 2] for i in range(len(cifar100_dataset))])
-    mean = numpy.mean(data_r), numpy.mean(data_g), numpy.mean(data_b)
-    std = numpy.std(data_r), numpy.std(data_g), numpy.std(data_b)
+    mean = torch.zeros(3)
+    data_squared_mean = torch.zeros(3)
+    num_batches = 0
+    for imgs, squared in ((imgs, imgs**2) for imgs, _ in tqdm(DataLoader(dataset, batch_size=16, num_workers=4))):
+        mean += torch.mean(imgs, dim=(0, 2, 3))
+        data_squared_mean += torch.mean(squared, dim=(0, 2, 3))
+        num_batches += 1
+
+    mean = mean / num_batches
+    std = torch.sqrt(data_squared_mean / num_batches - mean**2)
+
+    # data_r = numpy.dstack([dataset[i][0][:, :, 0] for i in tqdm(range(len(dataset)), desc='consuming reds')])
+    # data_g = numpy.dstack([dataset[i][0][:, :, 1] for i in tqdm(range(len(dataset)), desc='consuming greens')])
+    # data_b = numpy.dstack([dataset[i][0][:, :, 2] for i in tqdm(range(len(dataset)), desc='consuming blues')])
+    # mean = numpy.mean(data_r), numpy.mean(data_g), numpy.mean(data_b)
+    # std = numpy.std(data_r), numpy.std(data_g), numpy.std(data_b)
 
     return mean, std
 
