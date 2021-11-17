@@ -16,7 +16,7 @@ from torchvision import models
 
 from arg_utils import parse_args, make_interval_parser, make_half_interval_parser, show_on_action, show_group_on_action, \
     show_group_on_value, parse_cli_args
-from augmentation_modules import NormalizeExcludingMask
+from augmentation_modules import NormalizeExcludingMask, ColorJitterExcludingMask
 from catchsnap import CatchSnap
 from conf import settings
 from margin_sampling import kmargin_accumulate
@@ -211,19 +211,33 @@ if __name__ == '__main__':
         'adam': optim.Adam(net.parameters(), lr=args.lr, betas=args.betas, eps=args.eps, weight_decay=args.weight_decay,
                            amsgrad=args.amsgrad)
     }
-    # print(compute_mean_std(train_set_unaugmented))
-    # exit()
-
     catchsnap_transform = transforms.Compose([
         transforms.ToTensor(),
-        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD)
+        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotation(30),
+        ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
     ])
+
+    catchsnap_transform_extreme = transforms.Compose([
+        transforms.ToTensor(),
+        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotation(30),
+        ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
+        transforms.GaussianBlur(5),
+        transforms.RandomPosterize(bits=5),
+        transforms.RandomPerspective()
+    ])
+
     transform_test = transforms.Compose([
         transforms.ToTensor(),
         NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD)
     ])
 
-    train_set = CatchSnap('./data/', transform=catchsnap_transform)
+    train_set = CatchSnap('./data/', transform=catchsnap_transform_extreme)
     train_set_unaugmented = CatchSnap('./data/', transform=transform_test)
     test_set = CatchSnap('./data/', train=False, transform=transform_test)
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=3)
@@ -258,7 +272,7 @@ if __name__ == '__main__':
     # since tensorboard can't overwrite old values
     # so the only way is to create a new tensorboard log
     writer = SummaryWriter(log_dir=os.path.join(
-        settings.LOG_DIR, 'CIFAR100', args.net, 'kmargin' if args.kmargin else 'standard',
+        settings.LOG_DIR, 'CATCHSNAP', args.net, 'kmargin' if args.kmargin else 'standard',
         settings.TIME_NOW + args_suffix))
     input_tensor = torch.Tensor(1, 3, 32, 32)
     if args.gpu:
