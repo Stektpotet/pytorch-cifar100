@@ -274,7 +274,7 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir=os.path.join(
         settings.LOG_DIR, 'CATCHSNAP', args.net, 'kmargin' if args.kmargin else 'standard',
         settings.TIME_NOW + args_suffix))
-    input_tensor = torch.Tensor(1, 3, 32, 32)
+    input_tensor = torch.Tensor(1, 3, 512, 512)
     if args.gpu:
         input_tensor = input_tensor.cuda()
     writer.add_graph(net, input_tensor)
