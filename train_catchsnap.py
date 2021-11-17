@@ -213,23 +213,23 @@ if __name__ == '__main__':
     }
     catchsnap_transform = transforms.Compose([
         transforms.ToTensor(),
-        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(30),
         ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
+        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
     ])
 
     catchsnap_transform_extreme = transforms.Compose([
         transforms.ToTensor(),
-        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(30),
         ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
         transforms.GaussianBlur(5),
         transforms.RandomPosterize(bits=5),
-        transforms.RandomPerspective()
+        transforms.RandomPerspective(),
+        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
     ])
 
     transform_test = transforms.Compose([
