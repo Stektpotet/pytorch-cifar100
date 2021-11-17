@@ -255,15 +255,15 @@ if __name__ == '__main__':
     iter_per_epoch = len(train_loader)
     # warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
 
-    if args.resume:
-        recent_folder = most_recent_folder(os.path.join(settings.CHECKPOINT_PATH, args.net), fmt=settings.DATE_FORMAT)
-        if not recent_folder:
-            raise Exception('no recent folder were found')
-
-        checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder)
-
-    else:
-        checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, settings.TIME_NOW)
+    # if args.resume:
+    #     recent_folder = most_recent_folder(os.path.join(settings.CHECKPOINT_PATH, args.net), fmt=settings.DATE_FORMAT)
+    #     if not recent_folder:
+    #         raise Exception('no recent folder were found')
+    #
+    #     checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder)
+    #
+    # else:
+    #     checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, settings.TIME_NOW)
 
     # use tensorboard
     if not os.path.exists(settings.LOG_DIR):
@@ -279,30 +279,30 @@ if __name__ == '__main__':
         input_tensor = input_tensor.cuda()
     writer.add_graph(net, input_tensor)
 
-    # create checkpoint folder to save model
-    if not os.path.exists(checkpoint_path):
-        os.makedirs(checkpoint_path)
-    checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
+    # # create checkpoint folder to save model
+    # if not os.path.exists(checkpoint_path):
+    #     os.makedirs(checkpoint_path)
+    # checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
 
     best_acc = 0.0
-    if args.resume:
-        best_weights = best_acc_weights(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
-        if best_weights:
-            weights_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder, best_weights)
-            print('found best acc weights file:{}'.format(weights_path))
-            print('load best training file to test acc...')
-            net.load_state_dict(torch.load(weights_path))
-            best_acc = eval_training(test_loader, tb=False)
-            print('best acc is {:0.2f}'.format(best_acc))
-
-        recent_weights_file = most_recent_weights(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
-        if not recent_weights_file:
-            raise Exception('no recent weights file were found')
-        weights_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder, recent_weights_file)
-        print('loading weights file {} to resume training.....'.format(weights_path))
-        net.load_state_dict(torch.load(weights_path))
-
-        resume_epoch = last_epoch(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
+    # if args.resume:
+    #     best_weights = best_acc_weights(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
+    #     if best_weights:
+    #         weights_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder, best_weights)
+    #         print('found best acc weights file:{}'.format(weights_path))
+    #         print('load best training file to test acc...')
+    #         net.load_state_dict(torch.load(weights_path))
+    #         best_acc = eval_training(test_loader, tb=False)
+    #         print('best acc is {:0.2f}'.format(best_acc))
+    #
+    #     recent_weights_file = most_recent_weights(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
+    #     if not recent_weights_file:
+    #         raise Exception('no recent weights file were found')
+    #     weights_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder, recent_weights_file)
+    #     print('loading weights file {} to resume training.....'.format(weights_path))
+    #     net.load_state_dict(torch.load(weights_path))
+    #
+    #     resume_epoch = last_epoch(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
 
     train_func = train_kmargin if args.kmargin else train
 
@@ -317,9 +317,9 @@ if __name__ == '__main__':
             # train_scheduler.step()
             pass
 
-        if args.resume:
-            if epoch <= resume_epoch:
-                continue
+        # if args.resume:
+        #     if epoch <= resume_epoch:
+        #         continue
 
         train_func(epoch)
         acc = eval_training(test_loader, epoch)
@@ -328,16 +328,16 @@ if __name__ == '__main__':
             writer.add_scalar('accuracy_ratio', acc / max(acc_train, 1e-8), epoch)
 
         # start to save best performance model after learning rate decay to 0.01
-        if epoch > settings.MILESTONES[1] and best_acc < acc:
-            weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='best')
-            print('saving weights file to {}'.format(weights_path))
-            torch.save(net.state_dict(), weights_path)
-            best_acc = acc
-            continue
-
-        if not epoch % settings.SAVE_EPOCH:
-            weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='regular')
-            print('saving weights file to {}'.format(weights_path))
-            torch.save(net.state_dict(), weights_path)
+        # if epoch > settings.MILESTONES[1] and best_acc < acc:
+        #     weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='best')
+        #     print('saving weights file to {}'.format(weights_path))
+        #     torch.save(net.state_dict(), weights_path)
+        #     best_acc = acc
+        #     continue
+        #
+        # if not epoch % settings.SAVE_EPOCH:
+        #     weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='regular')
+        #     print('saving weights file to {}'.format(weights_path))
+        #     torch.save(net.state_dict(), weights_path)
 
     writer.close()
