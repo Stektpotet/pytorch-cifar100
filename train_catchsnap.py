@@ -291,9 +291,9 @@ if __name__ == '__main__':
     train_func = train_kmargin if args.kmargin else train
 
     print("begin training...")
-    # acc = eval_training(test_loader, 0)
-    # acc_train = eval_training(train_loader_unaugmented, 0, tag='Train')
-    # writer.add_scalar('accuracy_ratio', acc / max(acc_train, 1e-8), 0)
+    acc = eval_training(test_loader, 0)
+    acc_train = eval_training(train_loader_unaugmented, 0, tag='Train')
+    writer.add_scalar('accuracy_ratio', acc / max(acc_train, 1e-8), 0)
 
     for epoch in range(1, args.epochs + 1):
         if epoch > args.warm:
