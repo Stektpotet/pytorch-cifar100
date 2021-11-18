@@ -216,8 +216,8 @@ if __name__ == '__main__':
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(30),
-        ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
         NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
+        ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
     ])
 
     catchsnap_transform_extreme = transforms.Compose([
@@ -226,10 +226,9 @@ if __name__ == '__main__':
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(30),
         transforms.GaussianBlur(5),
-        transforms.RandomPosterize(bits=5),
         transforms.RandomPerspective(),
-        ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
         NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
+        ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
     ])
 
     transform_test = transforms.Compose([
