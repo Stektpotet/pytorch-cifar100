@@ -15,7 +15,7 @@ import torchvision.transforms as transforms
 from torchvision import models
 
 from arg_utils import parse_args, make_interval_parser, make_half_interval_parser, show_on_action, show_group_on_action, \
-    show_group_on_value, parse_cli_args
+    show_group_on_value, parse_cli_args, make_standard_parser
 from augmentation_modules import NormalizeExcludingMask, ColorJitterExcludingMask
 from catchsnap import CatchSnap
 from conf import settings
@@ -220,9 +220,42 @@ def get_network(args) -> nn.Module:
 
 CATCHSNAP_MEAN, CATCHSNAP_STD = (0.0524, 0.0473, 0.0391), (0.1711, 0.1561, 0.1354)
 
+def _transform_mode(name: str):
+    if name == 'none':
+        return transforms.Compose([
+            transforms.ToTensor(),
+            NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD)
+        ])
+    if name == 'moderate':
+        return transforms.Compose([
+            transforms.ToTensor(),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            transforms.RandomRotation(30),
+            NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
+            ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
+        ])
+    if name == 'extreme':
+        return transforms.Compose([
+            transforms.ToTensor(),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            transforms.RandomRotation(30),
+            transforms.GaussianBlur(5),
+            transforms.RandomPerspective(),
+            ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
+            NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
+        ])
+    else:
+        raise ValueError(f'Expected transform name [none, moderate, extreme], but got {name}')
+
+
 if __name__ == '__main__':
 
-    args = parse_cli_args()
+    parser = make_standard_parser()
+    parser.add_argument('--augmentation', type=str, default='moderate', choices=('none', 'moderate', 'extreme'))
+    args = parser.parse_args()
+
     net = get_network(args)
     print(args)
 
@@ -234,34 +267,10 @@ if __name__ == '__main__':
         'adam': optim.Adam(net.parameters(), lr=args.lr, betas=args.betas, eps=args.eps, weight_decay=args.weight_decay,
                            amsgrad=args.amsgrad)
     }
-    catchsnap_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),
-        transforms.RandomRotation(30),
-        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
-        ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
-    ])
 
-    catchsnap_transform_extreme = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),
-        transforms.RandomRotation(30),
-        transforms.GaussianBlur(5),
-        transforms.RandomPerspective(),
-        ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
-        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
-    ])
-
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD)
-    ])
-
-    train_set = CatchSnap('./data/', transform=catchsnap_transform_extreme)
-    train_set_unaugmented = CatchSnap('./data/', transform=transform_test)
-    test_set = CatchSnap('./data/', train=False, transform=transform_test)
+    train_set = CatchSnap('./data/', transform=_transform_mode(args.augmentation))
+    train_set_unaugmented = CatchSnap('./data/', transform=_transform_mode('none'))
+    test_set = CatchSnap('./data/', train=False, transform=_transform_mode('none'))
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=3)
     train_loader_unaugmented = DataLoader(train_set_unaugmented, batch_size=args.batch_size, num_workers=3)
     test_loader = DataLoader(test_set, batch_size=args.batch_size, num_workers=3)

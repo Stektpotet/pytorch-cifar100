@@ -5,7 +5,7 @@ from typing import Union, Callable, Any, Type, Iterable
 from numbers import Number
 
 
-def parse_cli_args():
+def make_standard_parser():
     _geq_zero_i = make_half_interval_parser(0)
     _geq_zero_f = make_half_interval_parser(0.0)
     _01_open_ended_interval_f = make_interval_parser(0.0, 1.0, lower_closed=True, upper_closed=False)
@@ -53,7 +53,10 @@ def parse_cli_args():
     adam_group.add(arg)
     show_group_on_value(adam_group, optimizer_choice, 'adam')
     show_group_on_value(sgd_group, optimizer_choice, 'sgd')
-    return parser.parse_args()
+    return parser
+
+def parse_cli_args():
+    return make_standard_parser().parse_args()
 
 
 
