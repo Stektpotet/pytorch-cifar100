@@ -137,20 +137,20 @@ def kmargin_accumulate(loader: DataLoader, model: nn.Module, batch_size: int, gp
     current_accumulation = 0
     samples_left = len(loader.dataset)
 
+    model.eval()
     sample = loader.dataset[0][0].unsqueeze(0)
     if gpu:
         sample = sample.cuda()
-    num_classes = torch.softmax(model(sample.cuda()), dim=1).shape[-1]
+    num_classes = torch.softmax(model(sample), dim=1).shape[-1]
     del sample
 
     if k < 0 or k > num_classes - 2:
         warnings.warn(f"k-Margin accumulation does not permit a q outside of range [0-{num_classes-2}], clamping...")
         k = min(max(k, 0), num_classes-2)
     if margin < 0 or margin >= 1:
-        warnings.warn("Q-Margin accumulation does not permit a margin outside of range [0-1), clamping...")
+        warnings.warn("k-Margin accumulation does not permit a margin outside of range [0-1), clamping...")
         margin = min(max(margin, 0), 1 - 1e-10)
 
-    model.eval()
     for batch in loader:
         x, y = batch
         if gpu:
@@ -189,6 +189,7 @@ def kmargin_accumulate(loader: DataLoader, model: nn.Module, batch_size: int, gp
             accumulated_labels.clear()
 
             if samples_left < batch_size:
+                print("Too few samples!")
                 model.train()
                 return
     model.train()

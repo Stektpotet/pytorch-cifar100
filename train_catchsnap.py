@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
 from torchvision import models
+from tqdm import tqdm
 
 from arg_utils import parse_args, make_interval_parser, make_half_interval_parser, show_on_action, show_group_on_action, \
     show_group_on_value, parse_cli_args, make_standard_parser
@@ -20,6 +21,7 @@ from augmentation_modules import NormalizeExcludingMask, ColorJitterExcludingMas
 from catchsnap import CatchSnap
 from conf import settings
 from margin_sampling import kmargin_accumulate
+from models.simple_classifier import SimpleClassifierWBNorm, simple_classifier
 from utils import get_training_dataloader, get_test_dataloader, WarmUpLR, \
     most_recent_folder, most_recent_weights, last_epoch, best_acc_weights, compute_mean_std
 
@@ -155,20 +157,25 @@ def train(epoch):
 
 @torch.no_grad()
 def eval_training(loader, epoch=0, tb=True, tag='Test'):
+    print(f"Evaluate {tag}, epoch#{epoch}!")
     start = time.time()
     net.eval()
 
     test_loss = 0.0  # cost function error
     correct = 0.0
 
-    for (images, labels) in loader:
+    sample_counter = 0
+
+    for (images, labels) in tqdm(loader):
+        sample_counter += len(labels)
         if args.gpu:
             images = images.cuda()
             labels = labels.cuda()
 
         outputs = net(images)
         loss = loss_function(outputs, labels)
-
+        if torch.isnan(loss):
+            print(outputs, labels)
         test_loss += loss.item()
         _, preds = outputs.max(1)
         correct += preds.eq(labels).sum()
@@ -197,6 +204,7 @@ def eval_training(loader, epoch=0, tb=True, tag='Test'):
 
 def get_network(args) -> nn.Module:
     net_type = {
+        'simple': simple_classifier,
         'vgg11_bn': models.vgg11_bn,
         'vgg13_bn': models.vgg13_bn,
         'vgg16_bn': models.vgg16_bn,
@@ -215,7 +223,7 @@ def get_network(args) -> nn.Module:
         'wrn50-2': models.wide_resnet50_2,
         'wrn101-2': models.wide_resnet101_2,
     }.get(args.net)
-    return net_type(num_classes=200)
+    return net_type(num_classes=23)
 
 
 CATCHSNAP_MEAN, CATCHSNAP_STD = (0.0524, 0.0473, 0.0391), (0.1711, 0.1561, 0.1354)
@@ -242,7 +250,7 @@ def _transform_mode(name: str):
             transforms.RandomVerticalFlip(),
             transforms.RandomRotation(30),
             transforms.GaussianBlur(5),
-            transforms.RandomPerspective(),
+            transforms.RandomPerspective(distortion_scale=0.25),
             ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
             NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
         ])
@@ -251,7 +259,6 @@ def _transform_mode(name: str):
 
 
 if __name__ == '__main__':
-
     parser = make_standard_parser()
     parser.add_argument('--augmentation', type=str, default='moderate', choices=('none', 'moderate', 'extreme'))
     args = parser.parse_args()
@@ -299,11 +306,11 @@ if __name__ == '__main__':
     best_acc = 0.0
     train_func = train_kmargin if args.kmargin else train
 
-    print("begin training...")
     acc = eval_training(test_loader, 0)
     acc_train = eval_training(train_loader_unaugmented, 0, tag='Train')
     writer.add_scalar('accuracy_ratio', acc / max(acc_train, 1e-8), 0)
 
+    print("begin training...")
     for epoch in range(1, args.epochs + 1):
         if epoch > args.warm:
             pass
