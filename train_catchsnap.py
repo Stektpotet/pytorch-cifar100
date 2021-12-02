@@ -240,8 +240,8 @@ def _transform_mode(name: str):
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
             transforms.RandomRotation(30),
-            NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
             ColorJitterExcludingMask(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
+            NormalizeExcludingMask(CATCHSNAP_MEAN, CATCHSNAP_STD),
         ])
     if name == 'extreme':
         return transforms.Compose([
