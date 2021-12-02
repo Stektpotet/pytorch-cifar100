@@ -266,7 +266,7 @@ if __name__ == '__main__':
     net = get_network(args)
     print(args)
 
-    args_suffix = f"_O{args.optimizer}_B{args.batch_size}_LR{args.lr}" + (f"_K{args.k_warm}_M{args.margin}" if args.kmargin else "")
+    args_suffix = f"_O{args.optimizer}_B{args.batch_size}_LR{args.lr}_A{args.augmentation}" + (f"_K{args.k_warm}_M{args.margin}" if args.kmargin else "")
 
     optim_from_args = {
         'sgd': optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, dampening=args.dampening,
