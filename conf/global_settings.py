@@ -30,7 +30,7 @@ MILESTONES = [30, 60, 90]
 #initial learning rate
 #INIT_LR = 0.1
 
-DATE_FORMAT = '%A_%d_%B_%Y_%Hh_%Mm_%Ss'
+DATE_FORMAT = '%a_%d_%m_%Y_%H_%M_%S_%f'
 #time of we run the script
 TIME_NOW = datetime.now().strftime(DATE_FORMAT)
 
