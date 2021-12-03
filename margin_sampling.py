@@ -136,9 +136,9 @@ def kmargin_accumulate(loader: DataLoader, model: nn.Module, batch_size: int, gp
     accumulated_labels: List[torch.Tensor] = []
     current_accumulation = 0
     samples_left = len(loader.dataset)
-
+    num_batches_accumulated = 0
     model.eval()
-    sample = loader.dataset[0][0].unsqueeze(0)
+    sample = loader.dataset[0][0].unsqueeze(0) # Make it in batch format to pass to model
     if gpu:
         sample = sample.cuda()
     num_classes = torch.softmax(model(sample), dim=1).shape[-1]
@@ -181,6 +181,7 @@ def kmargin_accumulate(loader: DataLoader, model: nn.Module, batch_size: int, gp
         if current_accumulation >= batch_size:
             model.train()
             yield torch.cat(accumulated_data)[:batch_size], torch.cat(accumulated_labels)[:batch_size]
+            num_batches_accumulated += 1
             model.eval()
             samples_left -= current_accumulation
 
@@ -193,3 +194,5 @@ def kmargin_accumulate(loader: DataLoader, model: nn.Module, batch_size: int, gp
                 model.train()
                 return
     model.train()
+    if num_batches_accumulated == 0:
+        yield next(iter(loader))
